@@ -12,9 +12,13 @@ func normalizeURL(inputURL string) (string, error) {
 		return "", fmt.Errorf("couldn't parse URL: %w", err)
 	}
 
-	fullURL := u.Host + u.Path 
+	if u.Host == "" {
+		return "", fmt.Errorf("missing host in URL: %s", inputURL)
+	}
 
-	fullURL = strings.TrimSuffix(fullURL,"/")
+	fullURL := u.Host + u.Path
+
+	fullURL = strings.TrimSuffix(fullURL, "/")
 
 	return fullURL, nil
 }
