@@ -6,4 +6,5 @@ type PageData struct {
 	FirstParagraph string
 	OutgoingLinks  []string
 	ImageURLs      []string
+	VisitCount int
 }

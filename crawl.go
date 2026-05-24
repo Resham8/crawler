@@ -5,56 +5,69 @@ import (
 	"net/url"
 )
 
-func crawlPage(rawBaseURL, rawCurrentURL string, pages map[string]int) {
-	baseUrl, err := url.Parse(rawBaseURL)
+func (cfg *config) crawlPage(rawCurrentURL string) {
+	cfg.concurrencyControl <- struct{}{}
+	defer func() {
+		<-cfg.concurrencyControl
+		cfg.wg.Done()
+	}()
 
+	cfg.mu.Lock()
+
+	if len(cfg.pages) >= cfg.maxPages {
+		cfg.mu.Unlock()
+		return
+	}
+
+	cfg.mu.Unlock()
+
+	currentURL, err := url.Parse(rawCurrentURL)
 	if err != nil {
-		fmt.Printf("error: %v", err)
+		fmt.Printf("Error - crawlPage: couldn't parse URL '%s': %v\n", rawCurrentURL, err)
 		return
 	}
 
-	currentUrl, err := url.Parse(rawCurrentURL)
+	if currentURL.Hostname() != cfg.baseURL.Hostname() {
+		return
+	}
 
+	normalizedURL, err := normalizeURL(rawCurrentURL)
 	if err != nil {
-		fmt.Printf("error: %v", err)
+		fmt.Printf("Error - normalizedURL: %v", err)
 		return
 	}
 
-	if baseUrl.Host != currentUrl.Host {
+	isFirst := cfg.addPageVisit(normalizedURL)
+	if !isFirst {
 		return
 	}
 
-	normalizedCurrentURL, err := normalizeURL(rawCurrentURL)
-	if err != nil {
-		return
-	}
-
-	if pages[normalizedCurrentURL] > 0 {
-		pages[normalizedCurrentURL]++
-		return
-	} else {
-		pages[normalizedCurrentURL] = 1
-	}
+	fmt.Printf("crawling %s\n", rawCurrentURL)
 
 	htmlBody, err := getHTML(rawCurrentURL)
 	if err != nil {
-		fmt.Printf("error: %v", err)
+		fmt.Printf("Error - getHTML: %v", err)
 		return
 	}
 
-	fmt.Printf("got HTML for: %s\n", rawCurrentURL)
+	pageData := extractPageData(htmlBody, rawCurrentURL)
+	cfg.setPageData(normalizedURL, pageData)
 
-	links, err := getURLsFromHTML(htmlBody, baseUrl)
-
-	if err != nil {
-		fmt.Printf("error: %v", err)
-		return
+	for _, nextURL := range pageData.OutgoingLinks {
+		cfg.wg.Add(1)
+		go cfg.crawlPage(nextURL)
 	}
 
-	for _, link := range links {		
-		crawlPage(rawBaseURL, link, pages)
-		// fmt.Println("Html response: ")
-		// fmt.Println(htmlBody)
+}
+
+func (cfg *config) addPageVisit(normalizedURL string) (isFirst bool) {
+	cfg.mu.Lock()
+	defer cfg.mu.Unlock()
+
+	if _, visited := cfg.pages[normalizedURL]; visited {
+		return false
 	}
 
+	cfg.pages[normalizedURL] = PageData{URL: normalizedURL}
+	return true
 }
