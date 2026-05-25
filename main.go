@@ -49,4 +49,5 @@ func main() {
 	for normalizedURL := range cfg.pages {
 		fmt.Printf("found: %s\n", normalizedURL)
 	}
+	writeJSONReport(cfg.pages, "report.json")
 }
